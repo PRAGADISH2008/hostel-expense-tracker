@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-globals */
 import React, { useState, useEffect } from 'react';
+import Tesseract from 'tesseract.js';
 import {
   Calendar,
   Wallet,
@@ -75,6 +76,43 @@ const ExpenseTrackerApp = () => {
   );
   const [subRepeat, setSubRepeat] = useState('One-time');
 
+// 1) LOAD from localStorage on startup
+  useEffect(() => {
+    const saved = localStorage.getItem('hostelTrackerData');
+    if (!saved) return;
+
+    try {
+      const data = JSON.parse(saved);
+
+      if (Array.isArray(data.expenses)) {
+        setExpenses(data.expenses);
+      }
+      if (typeof data.monthlyLimit === 'number') {
+        setMonthlyLimit(data.monthlyLimit);
+      }
+      if (typeof data.savingsGoal === 'number') {
+        setSavingsGoal(data.savingsGoal);
+      }
+      if (Array.isArray(data.subscriptions)) {
+        setSubscriptions(data.subscriptions);
+      }
+      if (typeof data.loggingStreak === 'number') {
+        setLoggingStreak(data.loggingStreak);
+      }
+      if (data.lastExpenseDate) {
+        setLastExpenseDate(data.lastExpenseDate);
+      }
+    } catch (e) {
+      console.error('Failed to load saved data', e);
+    }
+  }, []);    
+  // 2) SAVE to localStorage whenever data changes
+  useEffect(() => {
+  if (expenses?.length > 0 || monthlyLimit > 0) {  // Only save meaningful data
+    const data = { expenses, monthlyLimit, savingsGoal, subscriptions, loggingStreak, lastExpenseDate };
+    localStorage.setItem('hostelTrackerData', JSON.stringify(data));
+  }
+}, [expenses, monthlyLimit, savingsGoal, subscriptions, loggingStreak, lastExpenseDate]);
   const LANG = {
     en: {
       title: 'Hostel Expense Tracker',
@@ -249,26 +287,62 @@ const ExpenseTrackerApp = () => {
   };
 
   const checkUpcomingBills = () => {
-    const today = new Date();
-    const threeDaysLater = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-    const upcoming = subscriptions.filter((sub) => {
-      const dueDate = new Date(sub.dueDate);
-      return dueDate >= today && dueDate <= threeDaysLater;
-    });
+  const upcoming = subscriptions.map((sub) => {
+    const dueDate = new Date(sub.dueDate);
+    dueDate.setHours(0, 0, 0, 0);
+    const diffTime = dueDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return { ...sub, daysLeft: diffDays };
+  }).filter(sub => sub.daysLeft >= 0 && sub.daysLeft <= 3);
 
-    if (upcoming.length > 0) {
-      const billList = upcoming
-        .map((s) => `${s.name}: ₹${s.amount} on ${s.dueDate}`)
-        .join('\n');
-      setTimeout(
-        () =>
-          alert(`⚠️ Upcoming Bills (Next 3 days):\n\n${billList}`),
-        500
-      );
+  if (upcoming.length > 0) {
+    const billList = upcoming
+      .map((s) => {
+        let urgency = '';
+        if (s.daysLeft === 0) urgency = '🔴 TODAY!';
+        else if (s.daysLeft === 1) urgency = '🟠 TOMORROW';
+        else if (s.daysLeft === 2) urgency = '🟡 In 2 days';
+        else urgency = `🟢 In ${s.daysLeft} days`;
+        
+        return `${urgency}\n${s.name}: ₹${s.amount} on ${s.dueDate}`;
+      })
+      .join('\n\n');
+    setTimeout(
+      () =>
+        alert(`⚠️ Upcoming Bills Alert:\n\n${billList}`),
+      500
+    );
+  }
+};
+
+ 
+    const checkSavingsWarning = (newTotal) => {
+    if (monthlyLimit <= 0 || savingsGoal <= 0) return;
+
+    const remaining = monthlyLimit - newTotal;
+
+    if (remaining >= savingsGoal) {
+      // still above goal, do nothing
+      return;
     }
+
+    setTimeout(
+      () =>
+        alert(
+          '🚨 SAVINGS DEPLETED!\n\nYou are using savings money:\n₹' +
+            remaining.toFixed(2) +
+            ' left (goal: ₹' +
+            savingsGoal.toFixed(2) +
+            ')'
+        ),
+      200
+    );
   };
 
+    
   const addExpense = () => {
     if (!formAmount || parseFloat(formAmount) <= 0) {
       alert('❌ Please enter a valid amount');
@@ -336,6 +410,8 @@ const ExpenseTrackerApp = () => {
         100
       );
     }
+  
+    checkSavingsWarning(total);
 
     alert('✅ Expense added successfully!');
   };
@@ -522,8 +598,8 @@ const ExpenseTrackerApp = () => {
       alert('❌ Could not start voice recognition. Please try again.');
     }
   };
-
-  const scanReceipt = () => {
+  
+  const scanReceipt = async () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -533,72 +609,74 @@ const ExpenseTrackerApp = () => {
       const file = e.target.files[0];
       if (!file) return;
 
-      alert('📷 Processing receipt...\n\nThis may take a few seconds.');
-
       try {
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            ctx.drawImage(img, 0, 0);
+        alert('🔍 Scanning receipt with OCR...\n\nSupported:\n• Restaurant bills\n• Store receipts\n• Invoices\n• Handwritten notes\n• Price tags');
 
-            const note = prompt(
-              '📝 Enter expense description from receipt:',
-              'Receipt expense'
-            );
-            if (!note) return;
+        const {
+          data: { text },
+        } = await Tesseract.recognize(file, 'eng+tam', {
+          logger: (m) => console.log(m),
+        });
 
-            const amount = prompt('💰 Enter amount from receipt:', '');
-            if (!amount || isNaN(parseFloat(amount))) {
-              alert('❌ Invalid amount. Receipt scanning cancelled.');
-              return;
-            }
+        // Enhanced amount detection patterns
+        const amountPatterns = [
+          /total[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+          /amount[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+          /₹[\s]*(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/,
+          /rs[\s.]*(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+          /grand\s*total[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+          /net\s*amount[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+          /(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)\s*(?:rs|rupees|only)/i,
+          /payable[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+        ];
 
-            const category = autoCategorize(note);
-            const newExpense = {
-              id: Date.now(),
-              date: new Date().toISOString().split('T')[0],
-              note: note || 'Receipt',
-              category,
-              amount: parseFloat(amount),
-              splitType: 'onlyme',
-            };
+        let extractedAmount = null;
+        for (const pattern of amountPatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            extractedAmount = match[1].replace(/[,\s]/g, '');
+            break;
+          }
+        }
 
-            setExpenses((prev) => [...prev, newExpense]);
-            setLastExpenseDate(newExpense.date);
+        const cleanedText = text.replace(/\s+/g, ' ').trim();
+        const category = autoCategorize(cleanedText);
 
-            alert(
-              `✅ Receipt Scanned!\n\n₹${amount} - ${
-                categories[category]
-              }\n"${note}"\n\n📸 Image captured successfully!`
-            );
-          };
+        // Extract merchant/shop name from first line
+        const lines = cleanedText.split('\n').filter(l => l.trim());
+        const merchantName = lines[0]?.slice(0, 50) || 'Receipt scan';
 
-          img.onerror = () => {
-            alert(
-              '❌ Could not load image. Please try again with a different photo.'
-            );
-          };
+        setFormNote(merchantName);
+        setFormAmount(extractedAmount || '');
+        setFormCategory(category);
+        setFormDate(new Date().toISOString().split('T')[0]);
 
-          img.src = event.target.result;
-        };
-
-        reader.onerror = () => {
-          alert('❌ Could not read image file. Please try again.');
-        };
-
-        reader.readAsDataURL(file);
+        alert(
+          `✅ OCR Complete!\n\n📝 Note: "${merchantName}"\n💰 Amount: ₹${
+            extractedAmount || 'Not detected'
+          }\n🏷️ Category: ${
+            categories[category]
+          }\n\nForm auto-filled! Review and save.`
+        );
       } catch (error) {
-        alert('❌ Receipt scanning failed. Please try again.');
+        alert(
+          '❌ OCR failed. Falling back to manual entry.\n' + error.message
+        );
+
+        const note = prompt('Enter expense description:');
+        const amount = prompt('Enter amount:');
+
+        if (note && amount) {
+          setFormNote(note);
+          setFormAmount(amount);
+          setFormCategory(autoCategorize(note));
+        }
       }
     };
 
     input.click();
   };
+
 
   const addSubscription = () => {
     if (!subName || !subAmount) {
@@ -1612,3 +1690,4 @@ const ExpenseTrackerApp = () => {
 };
 
 export default ExpenseTrackerApp;
+
