@@ -76,14 +76,43 @@ const ExpenseTrackerApp = () => {
   );
   const [subRepeat, setSubRepeat] = useState('One-time');
 
-// Replace with:
- useEffect(() => {
-   if (expenses?.length > 0 || monthlyLimit > 0) {  // Only save meaningful data
-     const data = { expenses, monthlyLimit, savingsGoal, subscriptions, loggingStreak,       lastExpenseDate };
-     localStorage.setItem('hostelTrackerData', JSON.stringify(data));
-   }
- }, [expenses, monthlyLimit, savingsGoal, subscriptions, loggingStreak, lastExpenseDate]);
+// 1) LOAD from localStorage on startup
+  useEffect(() => {
+    const saved = localStorage.getItem('hostelTrackerData');
+    if (!saved) return;
 
+    try {
+      const data = JSON.parse(saved);
+
+      if (Array.isArray(data.expenses)) {
+        setExpenses(data.expenses);
+      }
+      if (typeof data.monthlyLimit === 'number') {
+        setMonthlyLimit(data.monthlyLimit);
+      }
+      if (typeof data.savingsGoal === 'number') {
+        setSavingsGoal(data.savingsGoal);
+      }
+      if (Array.isArray(data.subscriptions)) {
+        setSubscriptions(data.subscriptions);
+      }
+      if (typeof data.loggingStreak === 'number') {
+        setLoggingStreak(data.loggingStreak);
+      }
+      if (data.lastExpenseDate) {
+        setLastExpenseDate(data.lastExpenseDate);
+      }
+    } catch (e) {
+      console.error('Failed to load saved data', e);
+    }
+  }, []);    
+  // 2) SAVE to localStorage whenever data changes
+  useEffect(() => {
+  if (expenses?.length > 0 || monthlyLimit > 0) {  // Only save meaningful data
+    const data = { expenses, monthlyLimit, savingsGoal, subscriptions, loggingStreak, lastExpenseDate };
+    localStorage.setItem('hostelTrackerData', JSON.stringify(data));
+  }
+}, [expenses, monthlyLimit, savingsGoal, subscriptions, loggingStreak, lastExpenseDate]);
   const LANG = {
     en: {
       title: 'Hostel Expense Tracker',
