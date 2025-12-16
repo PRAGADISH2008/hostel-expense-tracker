@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/hostel-expense-tracker/static/css/main.a57d81a1.css",
-    "main.js": "/hostel-expense-tracker/static/js/main.678c64ed.js",
+    "main.js": "/hostel-expense-tracker/static/js/main.1e6ab999.js",
     "static/js/453.460f3e2f.chunk.js": "/hostel-expense-tracker/static/js/453.460f3e2f.chunk.js",
     "index.html": "/hostel-expense-tracker/index.html",
     "main.a57d81a1.css.map": "/hostel-expense-tracker/static/css/main.a57d81a1.css.map",
-    "main.678c64ed.js.map": "/hostel-expense-tracker/static/js/main.678c64ed.js.map",
+    "main.1e6ab999.js.map": "/hostel-expense-tracker/static/js/main.1e6ab999.js.map",
     "453.460f3e2f.chunk.js.map": "/hostel-expense-tracker/static/js/453.460f3e2f.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.a57d81a1.css",
-    "static/js/main.678c64ed.js"
+    "static/js/main.1e6ab999.js"
   ]
 }
