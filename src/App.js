@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-globals */
 import React, { useState, useEffect } from 'react';
+import Tesseract from 'tesseract.js';
 import {
   Calendar,
   Wallet,
@@ -19,8 +20,6 @@ import {
   BarChart3,
   HelpCircle,
   RefreshCw,
-  FileText,
-  CreditCard,
   Eye,
   EyeOff,
 } from 'lucide-react';
@@ -35,8 +34,33 @@ import {
 
 const ExpenseTrackerApp = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('1234');
+  
+  // Initialize from localStorage or use defaults
+  const [username, setUsername] = useState(() => {
+    const saved = localStorage.getItem('hostelTrackerData');
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        return data.username || 'admin';
+      } catch (e) {
+        return 'admin';
+      }
+    }
+    return 'admin';
+  });
+  
+  const [password, setPassword] = useState(() => {
+    const saved = localStorage.getItem('hostelTrackerData');
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        return data.password || '1234';
+      } catch (e) {
+        return '1234';
+      }
+    }
+    return '1234';
+  });  
   const [currentUser, setCurrentUser] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -48,8 +72,8 @@ const ExpenseTrackerApp = () => {
   const [loggingStreak, setLoggingStreak] = useState(0);
   const [lastExpenseDate, setLastExpenseDate] = useState(null);
 
-  const [loginUser, setLoginUser] = useState('admin');
-  const [loginPass, setLoginPass] = useState('1234');
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPass, setLoginPass] = useState('');
   const [formDate, setFormDate] = useState(
     new Date().toISOString().split('T')[0]
   );
@@ -74,6 +98,52 @@ const ExpenseTrackerApp = () => {
     new Date().toISOString().split('T')[0]
   );
   const [subRepeat, setSubRepeat] = useState('One-time');
+
+  // LOAD from localStorage on startup
+  useEffect(() => {
+    const saved = localStorage.getItem('hostelTrackerData');
+    if (!saved) return;
+
+    try {
+      const data = JSON.parse(saved);
+
+      if (Array.isArray(data.expenses)) {
+        setExpenses(data.expenses);
+      }
+      if (typeof data.monthlyLimit === 'number') {
+        setMonthlyLimit(data.monthlyLimit);
+      }
+      if (typeof data.savingsGoal === 'number') {
+        setSavingsGoal(data.savingsGoal);
+      }
+      if (Array.isArray(data.subscriptions)) {
+        setSubscriptions(data.subscriptions);
+      }
+      if (typeof data.loggingStreak === 'number') {
+        setLoggingStreak(data.loggingStreak);
+      }
+      if (data.lastExpenseDate) {
+        setLastExpenseDate(data.lastExpenseDate);
+      }
+    } catch (e) {
+      console.error('Failed to load saved data', e);
+    }
+  }, []);    
+  
+  // SAVE to localStorage whenever data changes
+  useEffect(() => {
+    const data = { 
+      expenses, 
+      monthlyLimit, 
+      savingsGoal, 
+      subscriptions, 
+      loggingStreak, 
+      lastExpenseDate, 
+      username, 
+      password 
+    };
+    localStorage.setItem('hostelTrackerData', JSON.stringify(data));
+  }, [expenses, monthlyLimit, savingsGoal, subscriptions, loggingStreak, lastExpenseDate, username, password]);
 
   const LANG = {
     en: {
@@ -250,23 +320,56 @@ const ExpenseTrackerApp = () => {
 
   const checkUpcomingBills = () => {
     const today = new Date();
-    const threeDaysLater = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
+    today.setHours(0, 0, 0, 0);
 
-    const upcoming = subscriptions.filter((sub) => {
+    const upcoming = subscriptions.map((sub) => {
       const dueDate = new Date(sub.dueDate);
-      return dueDate >= today && dueDate <= threeDaysLater;
-    });
+      dueDate.setHours(0, 0, 0, 0);
+      const diffTime = dueDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return { ...sub, daysLeft: diffDays };
+    }).filter(sub => sub.daysLeft >= 0 && sub.daysLeft <= 3);
 
     if (upcoming.length > 0) {
       const billList = upcoming
-        .map((s) => `${s.name}: ₹${s.amount} on ${s.dueDate}`)
-        .join('\n');
+        .map((s) => {
+          let urgency = '';
+          if (s.daysLeft === 0) urgency = '🔴 TODAY!';
+          else if (s.daysLeft === 1) urgency = '🟠 TOMORROW';
+          else if (s.daysLeft === 2) urgency = '🟡 In 2 days';
+          else urgency = `🟢 In ${s.daysLeft} days`;
+          
+          return `${urgency}\n${s.name}: ₹${s.amount} on ${s.dueDate}`;
+        })
+        .join('\n\n');
       setTimeout(
         () =>
-          alert(`⚠️ Upcoming Bills (Next 3 days):\n\n${billList}`),
+          alert(`⚠️ Upcoming Bills Alert:\n\n${billList}`),
         500
       );
     }
+  };
+
+  const checkSavingsWarning = (newTotal) => {
+    if (monthlyLimit <= 0 || savingsGoal <= 0) return;
+
+    const remaining = monthlyLimit - newTotal;
+
+    if (remaining >= savingsGoal) {
+      return;
+    }
+
+    setTimeout(
+      () =>
+        alert(
+          '🚨 SAVINGS DEPLETED!\n\nYou are using savings money:\n₹' +
+            remaining.toFixed(2) +
+            ' left (goal: ₹' +
+            savingsGoal.toFixed(2) +
+            ')'
+        ),
+      200
+    );
   };
 
   const addExpense = () => {
@@ -336,12 +439,13 @@ const ExpenseTrackerApp = () => {
         100
       );
     }
+  
+    checkSavingsWarning(total);
 
     alert('✅ Expense added successfully!');
   };
 
   const deleteExpense = (id) => {
-    // eslint-disable-next-line no-restricted-globals
     if (confirm('🗑️ Delete this expense?')) {
       setExpenses(expenses.filter((e) => e.id !== id));
       alert('✅ Expense deleted');
@@ -349,7 +453,6 @@ const ExpenseTrackerApp = () => {
   };
 
   const newMonth = () => {
-    // eslint-disable-next-line no-restricted-globals
     if (
       confirm(
         '🆕 Start New Month?\n\nThis will clear current expenses (data stays in browser storage)'
@@ -522,8 +625,8 @@ const ExpenseTrackerApp = () => {
       alert('❌ Could not start voice recognition. Please try again.');
     }
   };
-
-  const scanReceipt = () => {
+  
+  const scanReceipt = async () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -533,67 +636,66 @@ const ExpenseTrackerApp = () => {
       const file = e.target.files[0];
       if (!file) return;
 
-      alert('📷 Processing receipt...\n\nThis may take a few seconds.');
-
       try {
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            ctx.drawImage(img, 0, 0);
+        alert('🔍 Scanning receipt with OCR...\n\nSupported:\n• Restaurant bills\n• Store receipts\n• Invoices\n• Handwritten notes\n• Price tags');
 
-            const note = prompt(
-              '📝 Enter expense description from receipt:',
-              'Receipt expense'
-            );
-            if (!note) return;
+        const {
+          data: { text },
+        } = await Tesseract.recognize(file, 'eng+tam', {
+          logger: (m) => console.log(m),
+        });
 
-            const amount = prompt('💰 Enter amount from receipt:', '');
-            if (!amount || isNaN(parseFloat(amount))) {
-              alert('❌ Invalid amount. Receipt scanning cancelled.');
-              return;
-            }
+        const amountPatterns = [
+          /total[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+          /amount[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+          /₹[\s]*(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/,
+          /rs[\s.]*(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+          /grand\s*total[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+          /net\s*amount[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+          /(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)\s*(?:rs|rupees|only)/i,
+          /payable[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
+        ];
 
-            const category = autoCategorize(note);
-            const newExpense = {
-              id: Date.now(),
-              date: new Date().toISOString().split('T')[0],
-              note: note || 'Receipt',
-              category,
-              amount: parseFloat(amount),
-              splitType: 'onlyme',
-            };
+        let extractedAmount = null;
+        for (const pattern of amountPatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            extractedAmount = match[1].replace(/[,\s]/g, '');
+            break;
+          }
+        }
 
-            setExpenses((prev) => [...prev, newExpense]);
-            setLastExpenseDate(newExpense.date);
+        const cleanedText = text.replace(/\s+/g, ' ').trim();
+        const category = autoCategorize(cleanedText);
 
-            alert(
-              `✅ Receipt Scanned!\n\n₹${amount} - ${
-                categories[category]
-              }\n"${note}"\n\n📸 Image captured successfully!`
-            );
-          };
+        const lines = cleanedText.split('\n').filter(l => l.trim());
+        const merchantName = lines[0]?.slice(0, 50) || 'Receipt scan';
 
-          img.onerror = () => {
-            alert(
-              '❌ Could not load image. Please try again with a different photo.'
-            );
-          };
+        setFormNote(merchantName);
+        setFormAmount(extractedAmount || '');
+        setFormCategory(category);
+        setFormDate(new Date().toISOString().split('T')[0]);
 
-          img.src = event.target.result;
-        };
-
-        reader.onerror = () => {
-          alert('❌ Could not read image file. Please try again.');
-        };
-
-        reader.readAsDataURL(file);
+        alert(
+          `✅ OCR Complete!\n\n📝 Note: "${merchantName}"\n💰 Amount: ₹${
+            extractedAmount || 'Not detected'
+          }\n🏷️ Category: ${
+            categories[category]
+          }\n\nForm auto-filled! Review and save.`
+        );
       } catch (error) {
-        alert('❌ Receipt scanning failed. Please try again.');
+        alert(
+          '❌ OCR failed. Falling back to manual entry.\n' + error.message
+        );
+
+        const note = prompt('Enter expense description:');
+        const amount = prompt('Enter amount:');
+
+        if (note && amount) {
+          setFormNote(note);
+          setFormAmount(amount);
+          setFormCategory(autoCategorize(note));
+        }
       }
     };
 
@@ -621,7 +723,6 @@ const ExpenseTrackerApp = () => {
   };
 
   const deleteSubscription = (id) => {
-    // eslint-disable-next-line no-restricted-globals
     if (confirm('🗑️ Delete this bill?')) {
       setSubscriptions(subscriptions.filter((s) => s.id !== id));
       alert('✅ Bill deleted');
@@ -645,8 +746,12 @@ const ExpenseTrackerApp = () => {
     setUsername(newUsername);
     setPassword(newPassword);
     setCurrentUser(newUsername);
+    
     alert('✅ Credentials updated!\n\nUse new credentials on next login.');
     setShowSettings(false);
+    setNewUsername('');
+    setNewPassword('');
+    setConfirmPassword('');
   };
 
   const CHART_COLORS = [
