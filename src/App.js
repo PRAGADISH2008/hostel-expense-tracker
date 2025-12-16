@@ -6,7 +6,7 @@ import {
   Wallet,
   TrendingUp,
   PieChart,
-  Download,
+  Download, 
   Trash2,
   Plus,
   Mic,
