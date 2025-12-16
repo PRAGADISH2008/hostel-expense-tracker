@@ -20,8 +20,6 @@ import {
   BarChart3,
   HelpCircle,
   RefreshCw,
-  FileText,
-  CreditCard,
   Eye,
   EyeOff,
 } from 'lucide-react';
@@ -36,8 +34,33 @@ import {
 
 const ExpenseTrackerApp = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('1234');
+  
+  // Initialize from localStorage or use defaults
+  const [username, setUsername] = useState(() => {
+    const saved = localStorage.getItem('hostelTrackerData');
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        return data.username || 'admin';
+      } catch (e) {
+        return 'admin';
+      }
+    }
+    return 'admin';
+  });
+  
+  const [password, setPassword] = useState(() => {
+    const saved = localStorage.getItem('hostelTrackerData');
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        return data.password || '1234';
+      } catch (e) {
+        return '1234';
+      }
+    }
+    return '1234';
+  });  
   const [currentUser, setCurrentUser] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -49,8 +72,8 @@ const ExpenseTrackerApp = () => {
   const [loggingStreak, setLoggingStreak] = useState(0);
   const [lastExpenseDate, setLastExpenseDate] = useState(null);
 
-  const [loginUser, setLoginUser] = useState('admin');
-  const [loginPass, setLoginPass] = useState('1234');
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPass, setLoginPass] = useState('');
   const [formDate, setFormDate] = useState(
     new Date().toISOString().split('T')[0]
   );
@@ -76,7 +99,7 @@ const ExpenseTrackerApp = () => {
   );
   const [subRepeat, setSubRepeat] = useState('One-time');
 
-// 1) LOAD from localStorage on startup
+  // LOAD from localStorage on startup
   useEffect(() => {
     const saved = localStorage.getItem('hostelTrackerData');
     if (!saved) return;
@@ -106,13 +129,22 @@ const ExpenseTrackerApp = () => {
       console.error('Failed to load saved data', e);
     }
   }, []);    
-  // 2) SAVE to localStorage whenever data changes
+  
+  // SAVE to localStorage whenever data changes
   useEffect(() => {
-  if (expenses?.length > 0 || monthlyLimit > 0) {  // Only save meaningful data
-    const data = { expenses, monthlyLimit, savingsGoal, subscriptions, loggingStreak, lastExpenseDate };
+    const data = { 
+      expenses, 
+      monthlyLimit, 
+      savingsGoal, 
+      subscriptions, 
+      loggingStreak, 
+      lastExpenseDate, 
+      username, 
+      password 
+    };
     localStorage.setItem('hostelTrackerData', JSON.stringify(data));
-  }
-}, [expenses, monthlyLimit, savingsGoal, subscriptions, loggingStreak, lastExpenseDate]);
+  }, [expenses, monthlyLimit, savingsGoal, subscriptions, loggingStreak, lastExpenseDate, username, password]);
+
   const LANG = {
     en: {
       title: 'Hostel Expense Tracker',
@@ -287,45 +319,43 @@ const ExpenseTrackerApp = () => {
   };
 
   const checkUpcomingBills = () => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  const upcoming = subscriptions.map((sub) => {
-    const dueDate = new Date(sub.dueDate);
-    dueDate.setHours(0, 0, 0, 0);
-    const diffTime = dueDate - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return { ...sub, daysLeft: diffDays };
-  }).filter(sub => sub.daysLeft >= 0 && sub.daysLeft <= 3);
+    const upcoming = subscriptions.map((sub) => {
+      const dueDate = new Date(sub.dueDate);
+      dueDate.setHours(0, 0, 0, 0);
+      const diffTime = dueDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return { ...sub, daysLeft: diffDays };
+    }).filter(sub => sub.daysLeft >= 0 && sub.daysLeft <= 3);
 
-  if (upcoming.length > 0) {
-    const billList = upcoming
-      .map((s) => {
-        let urgency = '';
-        if (s.daysLeft === 0) urgency = '🔴 TODAY!';
-        else if (s.daysLeft === 1) urgency = '🟠 TOMORROW';
-        else if (s.daysLeft === 2) urgency = '🟡 In 2 days';
-        else urgency = `🟢 In ${s.daysLeft} days`;
-        
-        return `${urgency}\n${s.name}: ₹${s.amount} on ${s.dueDate}`;
-      })
-      .join('\n\n');
-    setTimeout(
-      () =>
-        alert(`⚠️ Upcoming Bills Alert:\n\n${billList}`),
-      500
-    );
-  }
-};
+    if (upcoming.length > 0) {
+      const billList = upcoming
+        .map((s) => {
+          let urgency = '';
+          if (s.daysLeft === 0) urgency = '🔴 TODAY!';
+          else if (s.daysLeft === 1) urgency = '🟠 TOMORROW';
+          else if (s.daysLeft === 2) urgency = '🟡 In 2 days';
+          else urgency = `🟢 In ${s.daysLeft} days`;
+          
+          return `${urgency}\n${s.name}: ₹${s.amount} on ${s.dueDate}`;
+        })
+        .join('\n\n');
+      setTimeout(
+        () =>
+          alert(`⚠️ Upcoming Bills Alert:\n\n${billList}`),
+        500
+      );
+    }
+  };
 
- 
-    const checkSavingsWarning = (newTotal) => {
+  const checkSavingsWarning = (newTotal) => {
     if (monthlyLimit <= 0 || savingsGoal <= 0) return;
 
     const remaining = monthlyLimit - newTotal;
 
     if (remaining >= savingsGoal) {
-      // still above goal, do nothing
       return;
     }
 
@@ -342,7 +372,6 @@ const ExpenseTrackerApp = () => {
     );
   };
 
-    
   const addExpense = () => {
     if (!formAmount || parseFloat(formAmount) <= 0) {
       alert('❌ Please enter a valid amount');
@@ -417,7 +446,6 @@ const ExpenseTrackerApp = () => {
   };
 
   const deleteExpense = (id) => {
-    // eslint-disable-next-line no-restricted-globals
     if (confirm('🗑️ Delete this expense?')) {
       setExpenses(expenses.filter((e) => e.id !== id));
       alert('✅ Expense deleted');
@@ -425,7 +453,6 @@ const ExpenseTrackerApp = () => {
   };
 
   const newMonth = () => {
-    // eslint-disable-next-line no-restricted-globals
     if (
       confirm(
         '🆕 Start New Month?\n\nThis will clear current expenses (data stays in browser storage)'
@@ -618,7 +645,6 @@ const ExpenseTrackerApp = () => {
           logger: (m) => console.log(m),
         });
 
-        // Enhanced amount detection patterns
         const amountPatterns = [
           /total[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
           /amount[\s:]*₹?(\d+(?:[,.\s]\d{1,3})*(?:\.\d{2})?)/i,
@@ -642,7 +668,6 @@ const ExpenseTrackerApp = () => {
         const cleanedText = text.replace(/\s+/g, ' ').trim();
         const category = autoCategorize(cleanedText);
 
-        // Extract merchant/shop name from first line
         const lines = cleanedText.split('\n').filter(l => l.trim());
         const merchantName = lines[0]?.slice(0, 50) || 'Receipt scan';
 
@@ -677,7 +702,6 @@ const ExpenseTrackerApp = () => {
     input.click();
   };
 
-
   const addSubscription = () => {
     if (!subName || !subAmount) {
       alert('❌ Please enter bill name and amount');
@@ -699,7 +723,6 @@ const ExpenseTrackerApp = () => {
   };
 
   const deleteSubscription = (id) => {
-    // eslint-disable-next-line no-restricted-globals
     if (confirm('🗑️ Delete this bill?')) {
       setSubscriptions(subscriptions.filter((s) => s.id !== id));
       alert('✅ Bill deleted');
@@ -723,8 +746,12 @@ const ExpenseTrackerApp = () => {
     setUsername(newUsername);
     setPassword(newPassword);
     setCurrentUser(newUsername);
+    
     alert('✅ Credentials updated!\n\nUse new credentials on next login.');
     setShowSettings(false);
+    setNewUsername('');
+    setNewPassword('');
+    setConfirmPassword('');
   };
 
   const CHART_COLORS = [
