@@ -1694,7 +1694,7 @@ const ExpenseTrackerApp = () => {
                           ? 'bg-red-500'
                           : spentPercent > 75
                           ? 'bg-amber-400'
-                          : 'bg-emerald-500'
+                          : 'bg-emerald-500' 
                       }`}
                       style={{
                         width: `${Math.min(spentPercent, 100)}%`,
